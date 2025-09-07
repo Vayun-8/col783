@@ -4,9 +4,57 @@ import numpy as np
 import numpy.typing as npt
 import cv2
 import matplotlib.pyplot as plt
+from typing import Literal
 
-from e import to_uint8, conv2d_raw
+def to_uint8(img_f: npt.NDArray[np.float32]) -> npt.NDArray[np.uint8]:
+    out = np.clip(img_f * 255.0, 0.0, 255.0).round().astype(np.uint8)
+    return out
 
+def conv2d_raw(
+    input_arr: npt.NDArray[np.float32],
+    kernel: npt.NDArray[np.float32],
+    c: float = 0.0,
+    mode: Literal["same", "full"] = "same",
+    flip_kernel: bool = True,
+) -> npt.NDArray[np.float32]:
+    a = np.asarray(input_arr, dtype=np.float32)
+    k = np.asarray(kernel, dtype=np.float32)
+
+    if flip_kernel:
+        k = np.flip(k, (0, 1))
+
+    H, W = a.shape
+    kh, kw = k.shape
+
+    if mode == "same":
+        pad_h = kh // 2
+        pad_w = kw // 2
+        padded = np.pad(a, ((pad_h, pad_h), (pad_w, pad_w)), mode="edge")
+        out_h = H
+        out_w = W
+    elif mode == "full":
+        pad_h = kh - 1
+        pad_w = kw - 1
+        padded = np.pad(
+            a, ((pad_h, pad_h), (pad_w, pad_w)), mode="constant", constant_values=0.0
+        )
+        out_h = H + kh - 1
+        out_w = W + kw - 1
+
+    out = np.empty((out_h, out_w), dtype=np.float32)
+
+    for i in range(out_h):
+        block = padded[i : i + kh, :]
+        row_acc = np.zeros(out_w, dtype=np.float32)
+        for r in range(kh):
+            conv_r = np.convolve(block[r], k[r], mode="valid")
+            row_acc += conv_r.astype(np.float32)
+        out[i, :] = row_acc
+
+    if c != 0.0:
+        out = out + np.float32(c)
+
+    return out
 
 def disk_kernel(radius: int, dtype: type = np.float32) -> npt.NDArray[np.float32]:
     r = max(1, int(radius))
